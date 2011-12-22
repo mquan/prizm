@@ -3,19 +3,34 @@ require 'RMagick'
 
 module Prizm
   class Extractor
-    def self.get_colors(img_location, nc=1)
+    def get_colors(img_location, nc=6, remove_bg=true)
       begin
-        image = Magick::ImageList.new(img_location)
-        image.change_geometry!('100x100') { |cols, rows, img| img.resize!(cols, rows) }
+        image = remove_bg ? remove_bg(img_location, nc) : reduce_size(Magick::ImageList.new(img_location), 100, 100)
         q = image.quantize(nc)
         colors = q.color_histogram.sort {|a, b| b[1] <=> a[1]}.map { |color, count| color }
-      rescue Magick::ImageMagickError
-        puts "Error loading image: Please specify a valid image location"
+      rescue Magick::ImageMagickError => e
+        puts e.message
+        puts e.backtrace
+        nil
       end
     end
     
-    def self.to_hex(pixel)
+    def to_hex(pixel)
       pixel.to_color(Magick::AllCompliance, false, 8)
+    end
+    
+    def reduce_size(image, width, height)
+      image.change_geometry!("#{width}x#{height}") { |cols, rows, img| img.resize!(cols, rows) }
+    end
+    
+    def remove_bg(img_location, nc, fuzz=20)
+      image = reduce_size Magick::ImageList.new(img_location), 100, 100
+      image = image.border(1, 1, image.pixel_color(0,0))
+      image = image.quantize(nc+4)
+      image.fuzz = "#{fuzz}%"
+      a = image.color_floodfill(0, 0, image.pixel_color(0,0))
+      a = a.matte_floodfill(0,0)
+      a
     end
   end
 end
